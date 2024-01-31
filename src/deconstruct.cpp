@@ -8,7 +8,7 @@
 
 using namespace std;
 
-static vector<string> split(const string& input, const string& chars);
+static std::vector<std::string> split(const std::string& input, const std::string& chars);
 static uint16_t get_syscall_number(const std::string& syscall_name);
 
 int get_line_indentation(string line)
@@ -277,7 +277,7 @@ vector<con_token*> parse_construct(string code)
 
 // ----- ----- ----- ----- ----- ----- helper functions impl ----- ----- ----- ----- -----
 
-vector<string> split(const string& input, const string& chars)
+std::vector<std::string> split(const std::string& input, const std::string& chars)
 {
   vector<string> result;
   string tmp;
