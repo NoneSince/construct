@@ -12,8 +12,7 @@ int if_amnt = 0;
 int while_amnt = 0;
 CON_BITWIDTH bitwidth = BIT64;
 
-string comparison_to_string(CON_COMPARISON condition)
-{
+string comparison_to_string(CON_COMPARISON condition) {
   switch (condition) {
     case E:
       return "e";
@@ -30,8 +29,7 @@ string comparison_to_string(CON_COMPARISON condition)
   }
   throw invalid_argument("Invalid comparison value: "+to_string(static_cast<int>(condition)));
 }
-CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition)
-{
+CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition) {
   switch (condition) {
     case E:
       return NE;
@@ -49,8 +47,7 @@ CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition)
   throw invalid_argument("Invalid comparison value: "+to_string(static_cast<int>(condition)));
 }
 
-static string reg_to_str(uint8_t call_num, CON_BITWIDTH bitwidth)
-{
+static string reg_to_str(uint8_t call_num, CON_BITWIDTH bitwidth) {
   switch (bitwidth) {
     case BIT8:
       switch (call_num) {
@@ -144,8 +141,7 @@ static string reg_to_str(uint8_t call_num, CON_BITWIDTH bitwidth)
   throw invalid_argument("Invalid bitwidth or call_num: bitwidth="+to_string(static_cast<int>(bitwidth))
                          +" call_num="+to_string(static_cast<int>(call_num)));
 }
-static uint8_t str_to_reg(string reg_name)
-{
+static uint8_t str_to_reg(string reg_name) {
   if (reg_name=="dil" ||reg_name=="di" || reg_name=="edi" || reg_name=="rdi")
     return 0;
   if (reg_name=="sil" ||reg_name=="si" || reg_name=="esi" || reg_name=="rsi")
@@ -161,8 +157,7 @@ static uint8_t str_to_reg(string reg_name)
   return 6;
 }
 
-static size_t find_macro_in_arg(string arg, string macro)
-{
+static size_t find_macro_in_arg(string arg, string macro) {
   size_t pos = arg.find(macro);
   if ((pos == 0 || (arg[pos-1]!='_' && !isalpha(arg[pos-1])))
       && (pos+macro.size()-1 == arg.size()-1 || (arg[pos+macro.size()]!='_' && !isalpha(arg[pos+macro.size()])))) {
@@ -170,8 +165,7 @@ static size_t find_macro_in_arg(string arg, string macro)
   }
   return string::npos;
 }
-static void apply_macro_to_token(con_token& token, const vector<con_macro*>& macros)
-{
+static void apply_macro_to_token(con_token& token, const vector<con_macro*>& macros) {
   if (token.tok_type != WHILE && token.tok_type != IF && token.tok_type != CMD) {
     return;
   }
@@ -223,8 +217,7 @@ static void apply_macro_to_token(con_token& token, const vector<con_macro*>& mac
   }
 }
 
-static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth)
-{
+static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth) {
   vector<con_token*> arg_tokens;
 
   // stack args;
@@ -317,8 +310,7 @@ static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth)
   return arg_tokens;
 }
 
-void apply_whiles(vector<con_token*>& tokens)
-{
+void apply_whiles(vector<con_token*>& tokens) {
   for (size_t i = 0; i< tokens.size(); i++) {
     apply_whiles(tokens[i]->tokens);
     if (tokens[i]->tok_type != WHILE) {
@@ -370,8 +362,7 @@ void apply_whiles(vector<con_token*>& tokens)
     // so: starttag, cmp, jmp ... jmp, endtag
   }
 }
-void apply_ifs(vector<con_token*>& tokens)
-{
+void apply_ifs(vector<con_token*>& tokens) {
   for (size_t i = 0; i< tokens.size(); i++) {
     apply_ifs(tokens[i]->tokens);
     if (tokens[i]->tok_type != IF) {
@@ -406,8 +397,7 @@ void apply_ifs(vector<con_token*>& tokens)
     tokens[i]->tokens.push_back(endif_tok);
   }
 }
-void apply_functions(std::vector<con_token*>& tokens)
-{
+void apply_functions(std::vector<con_token*>& tokens) {
   for (size_t i = 0; i < tokens.size(); i++) {
     if (tokens[i]->tok_type != FUNCTION) {
       continue;
@@ -441,21 +431,19 @@ void apply_functions(std::vector<con_token*>& tokens)
     tokens[i]->tokens.push_back(ret_tok);
   }
 }
-void apply_macros(vector<con_token*>& tokens, vector<con_macro*>& knownmacros)
-{
+void apply_macros(std::vector<con_token*>& tokens, std::vector<con_macro*>& macros) {
   for (size_t i = 0; i < tokens.size(); i++) {
     if (tokens[i]->tok_type == MACRO) {
-      knownmacros.push_back(tokens[i]->tok_macro);
+      macros.push_back(tokens[i]->tok_macro);
       continue;
     }
-    apply_macro_to_token(*tokens[i], knownmacros);
+    apply_macro_to_token(*tokens[i], macros);
     if (tokens[i]->tok_type == IF || tokens[i]->tok_type == WHILE || tokens[i]->tok_type == FUNCTION) {
-      apply_macros(tokens[i]->tokens, knownmacros);
+      apply_macros(tokens[i]->tokens, macros);
     }
   }
 }
-void apply_funcalls(std::vector<con_token*>& tokens)
-{
+void apply_funcalls(std::vector<con_token*>& tokens) {
   for (size_t i = 0; i < tokens.size(); i++) {
     apply_funcalls(tokens[i]->tokens);
     if (tokens[i]->tok_type != FUNCALL) {
@@ -473,8 +461,7 @@ void apply_funcalls(std::vector<con_token*>& tokens)
     tokens.insert(tokens.begin()+i+1, arg_tokens.begin(), arg_tokens.end());
   }
 }
-void apply_syscalls(std::vector<con_token*>& tokens)
-{
+void apply_syscalls(std::vector<con_token*>& tokens) {
   for (size_t i = 0; i < tokens.size(); i++) {
     apply_syscalls(tokens[i]->tokens);
     if (tokens[i]->tok_type != SYSCALL) {
@@ -500,8 +487,7 @@ void apply_syscalls(std::vector<con_token*>& tokens)
   }
 }
 
-void linearize_tokens(vector<con_token*>& tokens)
-{
+void linearize_tokens(vector<con_token*>& tokens) {
   for (size_t i = 0; i < tokens.size(); i++) {
     if (tokens[i]->tok_type != IF && tokens[i]->tok_type != WHILE && tokens[i]->tok_type != FUNCTION) {
       continue;
@@ -513,8 +499,7 @@ void linearize_tokens(vector<con_token*>& tokens)
   }
 }
 
-std::string tokens_to_nasm(std::vector<con_token*>& tokens)
-{
+std::string tokens_to_nasm(std::vector<con_token*>& tokens) {
   string output = "";
   for (size_t i = 0; i < tokens.size(); i++) {
     if (tokens[i]->tok_type == WHILE || tokens[i]->tok_type == IF

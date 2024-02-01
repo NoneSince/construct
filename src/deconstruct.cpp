@@ -11,8 +11,7 @@ using namespace std;
 static std::vector<std::string> split(const std::string& input, const std::string& chars);
 static uint16_t get_syscall_number(const std::string& syscall_name);
 
-int get_line_indentation(string line)
-{
+int get_line_indentation(string line) {
   int indentation = 0;
   for (size_t i = 0; i < line.size(); i++) {
     if (line[i] == '\t') {
@@ -25,8 +24,7 @@ int get_line_indentation(string line)
 }
 
 // Expects formatted line
-CON_TOKENTYPE get_token_type(string line)
-{
+CON_TOKENTYPE get_token_type(string line) {
   vector<string> line_split = split(line, " "); // line_split is not empty
   if (line_split[0] == "section")
     return SECTION;
@@ -47,8 +45,7 @@ CON_TOKENTYPE get_token_type(string line)
   return CMD;
 }
 
-CON_COMPARISON str_to_comparison(string comp)
-{
+CON_COMPARISON str_to_comparison(string comp) {
   if (comp == "e")
     return E;
   if (comp == "ne")
@@ -65,8 +62,7 @@ CON_COMPARISON str_to_comparison(string comp)
 }
 
 
-vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens)
-{
+vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens) {
   vector<con_token*> dl_tokens;
 
   // Serves as parent "section" where all tokens belong to, convenient for algo
@@ -109,21 +105,18 @@ vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens)
   return delinearized_tokens;
 }
 
-con_section* parse_section(string line) // section name // section . name ??
-{
+con_section* parse_section(string line) { // section name // section . name ??
   con_section* tok_section = new con_section();
   vector<string> line_split = split(line, " ");
   tok_section->name = line_split[1];
   return tok_section;
 }
-con_tag* parse_tag(string line) // name: // name : ??
-{
+con_tag* parse_tag(string line) { // name: // name : ??
   con_tag* tok_tag = new con_tag();
   tok_tag->name = line.substr(0, line.size()-1);
   return tok_tag;
 }
-con_while* parse_while(string line) // while val1 comp val2:
-{
+con_while* parse_while(string line) { // while val1 comp val2:
   con_while* tok_while = new con_while();
   vector<string> line_split = split(line, " :");
   tok_while->condition.arg1 = line_split[1];
@@ -131,8 +124,7 @@ con_while* parse_while(string line) // while val1 comp val2:
   tok_while->condition.arg2 = line_split[3];
   return tok_while;
 }
-con_if* parse_if(string line) // if val1 comp val2:
-{
+con_if* parse_if(string line) { // if val1 comp val2:
   con_if* tok_if = new con_if();
   vector<string> line_split = split(line, " :");
   tok_if->condition.arg1 = line_split[1];
@@ -140,8 +132,7 @@ con_if* parse_if(string line) // if val1 comp val2:
   tok_if->condition.arg2 = line_split[3];
   return tok_if;
 }
-con_function* parse_function(string line) // function func(arg1, arg2, ...):
-{
+con_function* parse_function(string line) { // function func(arg1, arg2, ...):
   con_function* tok_function = new con_function();
   vector<string> line_split = split(line, " ():,");
   tok_function->name = line_split[1];
@@ -153,8 +144,7 @@ con_function* parse_function(string line) // function func(arg1, arg2, ...):
   }
   return tok_function;
 }
-con_cmd* parse_cmd(string line) // op // op arg1 // op arg1, arg2
-{
+con_cmd* parse_cmd(string line) { // op // op arg1 // op arg1, arg2
   con_cmd* tok_cmd = new con_cmd();
   vector<string> line_split = split(line, " ,");
   tok_cmd->command = line_split[0];
@@ -164,16 +154,14 @@ con_cmd* parse_cmd(string line) // op // op arg1 // op arg1, arg2
     tok_cmd->arg2 = line_split[2];
   return tok_cmd;
 }
-con_macro* parse_macro(string line) // !name reg
-{
+con_macro* parse_macro(string line) { // !name reg
   con_macro* tok_macro = new con_macro();
   vector<string> line_split = split(line, " !");
   tok_macro->macro = line_split[0];
   tok_macro->value = line_split[1];
   return tok_macro;
 }
-con_funcall* parse_funcall(string line) // call func(arg1, arg2, ...)
-{
+con_funcall* parse_funcall(string line) { // call func(arg1, arg2, ...)
   con_funcall* tok_funcall = new con_funcall();
   vector<string> line_split = split(line, " (),");
   tok_funcall->funcname = line_split[1];
@@ -183,8 +171,7 @@ con_funcall* parse_funcall(string line) // call func(arg1, arg2, ...)
   }
   return tok_funcall;
 }
-con_syscall* parse_syscall(string line) // syscall sysc(arg1, arg2, ...)
-{
+con_syscall* parse_syscall(string line) {// syscall sysc(arg1, arg2, ...)
   vector<string> line_split = split(line, " (),");
   con_syscall* tok_syscall = new con_syscall();
   tok_syscall->number = get_syscall_number(line_split[1]);
@@ -196,8 +183,7 @@ con_syscall* parse_syscall(string line) // syscall sysc(arg1, arg2, ...)
 }
 
 // Does not expect formatted line, only lowercase
-con_token* parse_line(string line)
-{
+con_token* parse_line(string line) {
   con_token* token = new con_token;
   //remove multiple spaces from line
   string f_line = "";
@@ -240,8 +226,7 @@ con_token* parse_line(string line)
   }
   return token;
 }
-vector<con_token*> parse_construct(string code)
-{
+vector<con_token*> parse_construct(string code) {
   vector<string> code_split = split(code, "\n");
   vector<con_token*> tokens;
   bool in_data = false;
@@ -277,8 +262,7 @@ vector<con_token*> parse_construct(string code)
 
 // ----- ----- ----- ----- ----- ----- helper functions impl ----- ----- ----- ----- -----
 
-std::vector<std::string> split(const std::string& input, const std::string& chars)
-{
+std::vector<std::string> split(const std::string& input, const std::string& chars) {
   vector<string> result;
   string tmp;
   bool prev_is_delim = false;
@@ -306,8 +290,7 @@ std::vector<std::string> split(const std::string& input, const std::string& char
   return result;
 }
 
-uint16_t get_syscall_number(const std::string& syscall_name)
-{
+uint16_t get_syscall_number(const std::string& syscall_name) {
   static const map<std::string, uint16_t>& name_to_num = {
     {"read"                  , 0  },
     {"write"                 , 1  },

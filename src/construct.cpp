@@ -8,8 +8,7 @@
 #include "reconstruct.h"
 #include "construct_flags.h"
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   std::string path;
   std::string outpath;
   if (handle_flags(argc, argv, &path, &outpath) != 0) {
