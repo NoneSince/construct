@@ -12,7 +12,16 @@ int if_amnt = 0;
 int while_amnt = 0;
 CON_BITWIDTH bitwidth = BIT64;
 
-string comparison_to_string(CON_COMPARISON condition) {
+static CON_COMPARISON get_comparison_inverse(const CON_COMPARISON& condition);
+
+static std::string reg_to_str(const uint8_t& call_num, const CON_BITWIDTH& bitwidth);
+static uint8_t str_to_reg(const std::string& reg_name);
+
+static size_t find_macro_in_arg(const std::string& arg, const std::string& macro);
+static void apply_macro_to_token(con_token* token, const vector<con_macro*>& macros);
+static std::vector<con_token*> push_args(const std::vector<std::string>& args, const CON_BITWIDTH& bitwidth);
+
+std::string comparison_to_string(const CON_COMPARISON& condition) {
   switch (condition) {
     case E:
       return "e";
@@ -29,7 +38,227 @@ string comparison_to_string(CON_COMPARISON condition) {
   }
   throw invalid_argument("Invalid comparison value: "+to_string(static_cast<int>(condition)));
 }
-CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition) {
+
+void apply_whiles(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    apply_whiles((*it)->tokens);
+    if ((*it)->tok_type != WHILE) {
+      continue;
+    }
+    con_token* cmp_tok = new con_token;
+    cmp_tok->tok_type = CMD;
+    con_cmd* cmp_cmd = new con_cmd;
+    cmp_tok->tok_cmd = cmp_cmd;
+    cmp_cmd->command = "cmp";
+    cmp_cmd->arg1 = (*it)->tok_while->condition.arg1;
+    cmp_cmd->arg2 = (*it)->tok_while->condition.arg2;
+
+    string endtag_name = "endwhile" + to_string(while_amnt);
+    string starttag_name = "startwhile" + to_string(while_amnt);
+
+    con_token* jmp_tok = new con_token;
+    jmp_tok->tok_type = CMD;
+    con_cmd* jmp_cmd = new con_cmd;
+    jmp_tok->tok_cmd = jmp_cmd;
+    jmp_cmd->command = "j" + comparison_to_string(get_comparison_inverse((*it)->tok_while->condition.op));
+    jmp_cmd->arg1 = endtag_name;
+
+    con_token* jmpbck_tok = new con_token;
+    jmpbck_tok->tok_type = CMD;
+    con_cmd* jmpbck_cmd = new con_cmd;
+    jmpbck_tok->tok_cmd = jmpbck_cmd;
+    jmpbck_cmd->command = "jmp";
+    jmpbck_cmd->arg1 = starttag_name;
+
+    con_token* endwhile_tok = new con_token;
+    endwhile_tok->tok_type = TAG;
+    con_tag* endwhile_tag = new con_tag;
+    endwhile_tok->tok_tag = endwhile_tag;
+    endwhile_tag->name = endtag_name;
+
+    con_token* startwhile_tok = new con_token;
+    startwhile_tok->tok_type = TAG;
+    con_tag* startwhile_tag = new con_tag;
+    startwhile_tok->tok_tag = startwhile_tag;
+    startwhile_tag->name = starttag_name;
+
+    ++while_amnt;
+    (*it)->tokens.insert((*it)->tokens.begin(), jmp_tok);
+    (*it)->tokens.insert((*it)->tokens.begin(), cmp_tok);
+    (*it)->tokens.insert((*it)->tokens.begin(), startwhile_tok);
+    (*it)->tokens.push_back(jmpbck_tok);
+    (*it)->tokens.push_back(endwhile_tok);
+    // so: starttag, cmp, jmp ... jmp, endtag
+  }
+}
+void apply_ifs(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    apply_ifs((*it)->tokens);
+    if ((*it)->tok_type != IF) {
+      continue;
+    }
+    con_token* cmp_tok = new con_token;
+    cmp_tok->tok_type = CMD;
+    con_cmd* cmp_cmd = new con_cmd;
+    cmp_tok->tok_cmd = cmp_cmd;
+    cmp_cmd->command = "cmp";
+    cmp_cmd->arg1 = (*it)->tok_if->condition.arg1;
+    cmp_cmd->arg2 = (*it)->tok_if->condition.arg2;
+
+    string tagname = "endif" + to_string(if_amnt);
+
+    con_token* jmp_tok = new con_token;
+    jmp_tok->tok_type = CMD;
+    con_cmd* jmp_cmd = new con_cmd;
+    jmp_tok->tok_cmd = jmp_cmd;
+    jmp_cmd->command = "j" + comparison_to_string(get_comparison_inverse((*it)->tok_if->condition.op));
+    jmp_cmd->arg1 = tagname;
+
+    con_token* endif_tok = new con_token;
+    endif_tok->tok_type = TAG;
+    con_tag* endif_tag = new con_tag;
+    endif_tok->tok_tag = endif_tag;
+    endif_tag->name = tagname;
+    ++if_amnt;
+
+    (*it)->tokens.insert((*it)->tokens.begin(), jmp_tok);
+    (*it)->tokens.insert((*it)->tokens.begin(), cmp_tok);
+    (*it)->tokens.push_back(endif_tok);
+  }
+}
+void apply_functions(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    if ((*it)->tok_type != FUNCTION) {
+      continue;
+    }
+    con_function* crntfunc = (*it)->tok_function;
+    if (crntfunc->name == "main") {
+      crntfunc->name = "_start";
+    }
+
+    con_token* tag_tok = new con_token;
+    tag_tok->tok_type = TAG;
+    con_tag* functag = new con_tag;
+    tag_tok->tok_tag = functag;
+    functag->name = crntfunc->name;
+    for (size_t j = 0; j < crntfunc->arguments.size(); ++j) {
+      con_token* arg_tok = new con_token;
+      arg_tok->tok_type = MACRO;
+      con_macro* arg_macro = new con_macro;
+      arg_macro->value = reg_to_str(j, bitwidth);
+      arg_macro->macro = crntfunc->arguments[j];
+      arg_tok->tok_macro = arg_macro;
+
+      (*it)->tokens.insert((*it)->tokens.begin(), arg_tok);
+    }
+    (*it)->tokens.insert((*it)->tokens.begin(), tag_tok);
+    con_token* ret_tok = new con_token;
+    ret_tok->tok_type = CMD;
+    con_cmd* ret_cmd = new con_cmd;
+    ret_tok->tok_cmd = ret_cmd;
+    ret_cmd->command = "ret";
+    (*it)->tokens.push_back(ret_tok);
+  }
+}
+void apply_macros(std::vector<con_token*>& tokens, std::vector<con_macro*>& knownmacros) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    if ((*it)->tok_type == MACRO) {
+      knownmacros.push_back((*it)->tok_macro);
+      continue;
+    }
+    apply_macro_to_token(*it, knownmacros);
+    if ((*it)->tok_type == IF || (*it)->tok_type == WHILE || (*it)->tok_type == FUNCTION) {
+      apply_macros((*it)->tokens, knownmacros);
+    }
+  }
+}
+void apply_funcalls(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    apply_funcalls((*it)->tokens);
+    if ((*it)->tok_type != FUNCALL) {
+      continue;
+    }
+    vector<con_token*> arg_tokens = push_args((*it)->tok_funcall->arguments, bitwidth);
+    con_token* call_tok = new con_token();
+    call_tok->tok_type = CMD;
+    con_cmd* call_cmd = new con_cmd();
+    call_tok->tok_cmd = call_cmd;
+    call_cmd->command = "call";
+    call_cmd->arg1 = (*it)->tok_funcall->funcname;
+    arg_tokens.push_back(call_tok);
+
+    tokens.insert(it+1, arg_tokens.begin(), arg_tokens.end());
+  }
+}
+void apply_syscalls(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    apply_syscalls((*it)->tokens);
+    if ((*it)->tok_type != SYSCALL) {
+      continue;
+    }
+    vector<con_token*> arg_tokens = push_args((*it)->tok_syscall->arguments, bitwidth);
+    con_token* call_tok1 = new con_token();
+    call_tok1->tok_type = CMD;
+    con_cmd* call_cmd = new con_cmd();
+    call_tok1->tok_cmd = call_cmd;
+    call_cmd->command = "mov";
+    call_cmd->arg1 = "rax";
+    call_cmd->arg2 = to_string((*it)->tok_syscall->number);
+    arg_tokens.push_back(call_tok1);
+    con_token* call_tok2 = new con_token();
+    call_tok2->tok_type = CMD;
+    con_cmd* call_sys = new con_cmd();
+    call_tok2->tok_cmd = call_sys;
+    call_sys->command = "syscall";
+    arg_tokens.push_back(call_tok2);
+
+    tokens.insert(it+1, arg_tokens.begin(), arg_tokens.end());
+  }
+}
+
+void linearize_tokens(std::vector<con_token*>& tokens) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    if ((*it)->tok_type != IF && (*it)->tok_type != WHILE && (*it)->tok_type != FUNCTION) {
+      continue;
+    }
+    vector<con_token*>& subtokens = (*it)->tokens;
+    tokens.insert(it+1, subtokens.begin(), subtokens.end());
+    subtokens.clear(); // the pointers were moved to tokens
+    delete *it;
+    *it = nullptr;
+    tokens.erase(it);
+  }
+}
+
+std::string tokens_to_nasm(const std::vector<con_token*>& tokens) {
+  string output = "";
+  for (vector<con_token*>::const_iterator c_it = tokens.cbegin(); c_it != tokens.cend(); ++c_it ) {
+    if ((*c_it)->tok_type == WHILE || (*c_it)->tok_type == IF
+        || (*c_it)->tok_type == FUNCTION || (*c_it)->tok_type == MACRO
+        || (*c_it)->tok_type == FUNCALL || (*c_it)->tok_type == SYSCALL) {
+      continue;
+    }
+    if ((*c_it)->tok_type == SECTION) {
+      output += "section " + (*c_it)->tok_section->name;
+    } else if ((*c_it)->tok_type == TAG) {
+      output += (*c_it)->tok_tag->name + ":";
+    } else if ((*c_it)->tok_type == CMD) {
+      output += (*c_it)->tok_cmd->command;
+      if (!(*c_it)->tok_cmd->arg1.empty()) {
+        output += " " + (*c_it)->tok_cmd->arg1;
+      }
+      if (!(*c_it)->tok_cmd->arg2.empty()) {
+        output += ", " + (*c_it)->tok_cmd->arg2;
+      }
+    }
+    output += "\n";
+  }
+  return output;
+}
+
+// ----- ----- ----- ----- ----- ----- helper functions impl ----- ----- ----- ----- -----
+
+CON_COMPARISON get_comparison_inverse(const CON_COMPARISON& condition) {
   switch (condition) {
     case E:
       return NE;
@@ -47,7 +276,7 @@ CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition) {
   throw invalid_argument("Invalid comparison value: "+to_string(static_cast<int>(condition)));
 }
 
-static string reg_to_str(uint8_t call_num, CON_BITWIDTH bitwidth) {
+std::string reg_to_str(const uint8_t& call_num, const CON_BITWIDTH& bitwidth) {
   switch (bitwidth) {
     case BIT8:
       switch (call_num) {
@@ -141,7 +370,7 @@ static string reg_to_str(uint8_t call_num, CON_BITWIDTH bitwidth) {
   throw invalid_argument("Invalid bitwidth or call_num: bitwidth="+to_string(static_cast<int>(bitwidth))
                          +" call_num="+to_string(static_cast<int>(call_num)));
 }
-static uint8_t str_to_reg(string reg_name) {
+uint8_t str_to_reg(const std::string& reg_name) {
   if (reg_name=="dil" ||reg_name=="di" || reg_name=="edi" || reg_name=="rdi")
     return 0;
   if (reg_name=="sil" ||reg_name=="si" || reg_name=="esi" || reg_name=="rsi")
@@ -157,7 +386,7 @@ static uint8_t str_to_reg(string reg_name) {
   return 6;
 }
 
-static size_t find_macro_in_arg(string arg, string macro) {
+size_t find_macro_in_arg(const std::string& arg, const std::string& macro) {
   size_t pos = arg.find(macro);
   if ((pos == 0 || (arg[pos-1]!='_' && !isalpha(arg[pos-1])))
       && (pos+macro.size()-1 == arg.size()-1 || (arg[pos+macro.size()]!='_' && !isalpha(arg[pos+macro.size()])))) {
@@ -165,50 +394,50 @@ static size_t find_macro_in_arg(string arg, string macro) {
   }
   return string::npos;
 }
-static void apply_macro_to_token(con_token& token, const vector<con_macro*>& macros) {
-  if (token.tok_type != WHILE && token.tok_type != IF && token.tok_type != CMD) {
+void apply_macro_to_token(con_token* token, const vector<con_macro*>& macros) {
+  if (token->tok_type != WHILE && token->tok_type != IF && token->tok_type != CMD) {
     return;
   }
   // Unoptimal, but more clear imo
-  for (size_t i = 0; i < macros.size(); i++) {
-    const string& macro = macros[i]->macro;
-    const string& value = macros[i]->value;
+  for (vector<con_macro*>::const_iterator c_it = macros.cbegin(); c_it != macros.cend(); ++c_it ) {
+    const string& macro = (*c_it)->macro;
+    const string& value = (*c_it)->value;
     size_t pos;
-    switch (token.tok_type) {
+    switch (token->tok_type) {
       case WHILE:
-        pos = find_macro_in_arg(token.tok_while->condition.arg1, macro);
+        pos = find_macro_in_arg(token->tok_while->condition.arg1, macro);
         while (pos != string::npos) {
-          token.tok_while->condition.arg1.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_while->condition.arg1, macro);
+          token->tok_while->condition.arg1.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_while->condition.arg1, macro);
         }
-        pos = find_macro_in_arg(token.tok_while->condition.arg2, macro);
+        pos = find_macro_in_arg(token->tok_while->condition.arg2, macro);
         while (pos != string::npos) {
-          token.tok_while->condition.arg2.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_while->condition.arg2, macro);
+          token->tok_while->condition.arg2.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_while->condition.arg2, macro);
         }
       break;
       case IF:
-        pos = find_macro_in_arg(token.tok_if->condition.arg1, macro);
+        pos = find_macro_in_arg(token->tok_if->condition.arg1, macro);
         while (pos != string::npos) {
-          token.tok_if->condition.arg1.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_if->condition.arg1, macro);
+          token->tok_if->condition.arg1.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_if->condition.arg1, macro);
         }
-        pos = find_macro_in_arg(token.tok_if->condition.arg2, macro);
+        pos = find_macro_in_arg(token->tok_if->condition.arg2, macro);
         while (pos != string::npos) {
-          token.tok_if->condition.arg2.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_if->condition.arg2, macro);
+          token->tok_if->condition.arg2.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_if->condition.arg2, macro);
         }
       break;
       case CMD:
-        pos = find_macro_in_arg(token.tok_cmd->arg1, macro);
+        pos = find_macro_in_arg(token->tok_cmd->arg1, macro);
         while (pos != string::npos) {
-          token.tok_cmd->arg1.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_cmd->arg1, macro);
+          token->tok_cmd->arg1.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_cmd->arg1, macro);
         }
-        pos = find_macro_in_arg(token.tok_cmd->arg2, macro);
+        pos = find_macro_in_arg(token->tok_cmd->arg2, macro);
         while (pos != string::npos) {
-          token.tok_cmd->arg2.replace(pos, macro.size(), value);
-          pos = find_macro_in_arg(token.tok_cmd->arg2, macro);
+          token->tok_cmd->arg2.replace(pos, macro.size(), value);
+          pos = find_macro_in_arg(token->tok_cmd->arg2, macro);
         }
       break;
       default:
@@ -216,8 +445,7 @@ static void apply_macro_to_token(con_token& token, const vector<con_macro*>& mac
     }
   }
 }
-
-static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth) {
+std::vector<con_token*> push_args(const std::vector<std::string>& args, const CON_BITWIDTH& bitwidth) {
   vector<con_token*> arg_tokens;
 
   // stack args;
@@ -268,7 +496,7 @@ static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth)
       current_val_place[reg] = 6;
     }
   }
-  for (size_t i = 0; i < reg_args_size; i++) {
+  for (size_t i = 0; i < reg_args_size; ++i) {
     con_token* arg_tok = new con_token();
     arg_tok->tok_type = CMD;
     con_cmd* arg_cmd = new con_cmd();
@@ -308,219 +536,4 @@ static vector<con_token*> push_args(vector<string>& args, CON_BITWIDTH bitwidth)
     }
   }
   return arg_tokens;
-}
-
-void apply_whiles(vector<con_token*>& tokens) {
-  for (size_t i = 0; i< tokens.size(); i++) {
-    apply_whiles(tokens[i]->tokens);
-    if (tokens[i]->tok_type != WHILE) {
-      continue;
-    }
-    con_token* cmp_tok = new con_token;
-    cmp_tok->tok_type = CMD;
-    con_cmd* cmp_cmd = new con_cmd;
-    cmp_tok->tok_cmd = cmp_cmd;
-    cmp_cmd->command = "cmp";
-    cmp_cmd->arg1 = tokens[i]->tok_while->condition.arg1;
-    cmp_cmd->arg2 = tokens[i]->tok_while->condition.arg2;
-
-    string endtag_name = "endwhile" + to_string(while_amnt);
-    string starttag_name = "startwhile" + to_string(while_amnt);
-
-    con_token* jmp_tok = new con_token;
-    jmp_tok->tok_type = CMD;
-    con_cmd* jmp_cmd = new con_cmd;
-    jmp_tok->tok_cmd = jmp_cmd;
-    jmp_cmd->command = "j" + comparison_to_string(get_comparison_inverse(tokens[i]->tok_while->condition.op));
-    jmp_cmd->arg1 = endtag_name;
-
-    con_token* jmpbck_tok = new con_token;
-    jmpbck_tok->tok_type = CMD;
-    con_cmd* jmpbck_cmd = new con_cmd;
-    jmpbck_tok->tok_cmd = jmpbck_cmd;
-    jmpbck_cmd->command = "jmp";
-    jmpbck_cmd->arg1 = starttag_name;
-
-    con_token* endwhile_tok = new con_token;
-    endwhile_tok->tok_type = TAG;
-    con_tag* endwhile_tag = new con_tag;
-    endwhile_tok->tok_tag = endwhile_tag;
-    endwhile_tag->name = endtag_name;
-
-    con_token* startwhile_tok = new con_token;
-    startwhile_tok->tok_type = TAG;
-    con_tag* startwhile_tag = new con_tag;
-    startwhile_tok->tok_tag = startwhile_tag;
-    startwhile_tag->name = starttag_name;
-
-    while_amnt++;
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), jmp_tok);
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), cmp_tok);
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), startwhile_tok);
-    tokens[i]->tokens.push_back(jmpbck_tok);
-    tokens[i]->tokens.push_back(endwhile_tok);
-    // so: starttag, cmp, jmp ... jmp, endtag
-  }
-}
-void apply_ifs(vector<con_token*>& tokens) {
-  for (size_t i = 0; i< tokens.size(); i++) {
-    apply_ifs(tokens[i]->tokens);
-    if (tokens[i]->tok_type != IF) {
-      continue;
-    }
-    con_token* cmp_tok = new con_token;
-    cmp_tok->tok_type = CMD;
-    con_cmd* cmp_cmd = new con_cmd;
-    cmp_tok->tok_cmd = cmp_cmd;
-    cmp_cmd->command = "cmp";
-    cmp_cmd->arg1 = tokens[i]->tok_if->condition.arg1;
-    cmp_cmd->arg2 = tokens[i]->tok_if->condition.arg2;
-
-    string tagname = "endif" + to_string(if_amnt);
-
-    con_token* jmp_tok = new con_token;
-    jmp_tok->tok_type = CMD;
-    con_cmd* jmp_cmd = new con_cmd;
-    jmp_tok->tok_cmd = jmp_cmd;
-    jmp_cmd->command = "j" + comparison_to_string(get_comparison_inverse(tokens[i]->tok_if->condition.op));
-    jmp_cmd->arg1 = tagname;
-
-    con_token* endif_tok = new con_token;
-    endif_tok->tok_type = TAG;
-    con_tag* endif_tag = new con_tag;
-    endif_tok->tok_tag = endif_tag;
-    endif_tag->name = tagname;
-    if_amnt++;
-
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), jmp_tok);
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), cmp_tok);
-    tokens[i]->tokens.push_back(endif_tok);
-  }
-}
-void apply_functions(std::vector<con_token*>& tokens) {
-  for (size_t i = 0; i < tokens.size(); i++) {
-    if (tokens[i]->tok_type != FUNCTION) {
-      continue;
-    }
-    con_function* crntfunc = tokens[i]->tok_function;
-    if (crntfunc->name == "main") {
-      crntfunc->name = "_start";
-    }
-
-    con_token* tag_tok = new con_token;
-    tag_tok->tok_type = TAG;
-    con_tag* functag = new con_tag;
-    tag_tok->tok_tag = functag;
-    functag->name = crntfunc->name;
-    for (size_t j = 0; j < crntfunc->arguments.size(); j++) {
-      con_token* arg_tok = new con_token;
-      arg_tok->tok_type = MACRO;
-      con_macro* arg_macro = new con_macro;
-      arg_macro->value = reg_to_str(j, bitwidth);
-      arg_macro->macro = crntfunc->arguments[j];
-      arg_tok->tok_macro = arg_macro;
-
-      tokens[i]->tokens.insert(tokens[i]->tokens.begin(), arg_tok);
-    }
-    tokens[i]->tokens.insert(tokens[i]->tokens.begin(), tag_tok);
-    con_token* ret_tok = new con_token;
-    ret_tok->tok_type = CMD;
-    con_cmd* ret_cmd = new con_cmd;
-    ret_tok->tok_cmd = ret_cmd;
-    ret_cmd->command = "ret";
-    tokens[i]->tokens.push_back(ret_tok);
-  }
-}
-void apply_macros(std::vector<con_token*>& tokens, std::vector<con_macro*>& macros) {
-  for (size_t i = 0; i < tokens.size(); i++) {
-    if (tokens[i]->tok_type == MACRO) {
-      macros.push_back(tokens[i]->tok_macro);
-      continue;
-    }
-    apply_macro_to_token(*tokens[i], macros);
-    if (tokens[i]->tok_type == IF || tokens[i]->tok_type == WHILE || tokens[i]->tok_type == FUNCTION) {
-      apply_macros(tokens[i]->tokens, macros);
-    }
-  }
-}
-void apply_funcalls(std::vector<con_token*>& tokens) {
-  for (size_t i = 0; i < tokens.size(); i++) {
-    apply_funcalls(tokens[i]->tokens);
-    if (tokens[i]->tok_type != FUNCALL) {
-      continue;
-    }
-    vector<con_token*> arg_tokens = push_args(tokens[i]->tok_funcall->arguments, bitwidth);
-    con_token* call_tok = new con_token();
-    call_tok->tok_type = CMD;
-    con_cmd* call_cmd = new con_cmd();
-    call_tok->tok_cmd = call_cmd;
-    call_cmd->command = "call";
-    call_cmd->arg1 = tokens[i]->tok_funcall->funcname;
-    arg_tokens.push_back(call_tok);
-
-    tokens.insert(tokens.begin()+i+1, arg_tokens.begin(), arg_tokens.end());
-  }
-}
-void apply_syscalls(std::vector<con_token*>& tokens) {
-  for (size_t i = 0; i < tokens.size(); i++) {
-    apply_syscalls(tokens[i]->tokens);
-    if (tokens[i]->tok_type != SYSCALL) {
-      continue;
-    }
-    vector<con_token*> arg_tokens = push_args(tokens[i]->tok_syscall->arguments, bitwidth);
-    con_token* call_tok1 = new con_token();
-    call_tok1->tok_type = CMD;
-    con_cmd* call_cmd = new con_cmd();
-    call_tok1->tok_cmd = call_cmd;
-    call_cmd->command = "mov";
-    call_cmd->arg1 = "rax";
-    call_cmd->arg2 = to_string(tokens[i]->tok_syscall->number);
-    arg_tokens.push_back(call_tok1);
-    con_token* call_tok2 = new con_token();
-    call_tok2->tok_type = CMD;
-    con_cmd* call_sys = new con_cmd();
-    call_tok2->tok_cmd = call_sys;
-    call_sys->command = "syscall";
-    arg_tokens.push_back(call_tok2);
-
-    tokens.insert(tokens.begin()+i+1, arg_tokens.begin(), arg_tokens.end());
-  }
-}
-
-void linearize_tokens(vector<con_token*>& tokens) {
-  for (size_t i = 0; i < tokens.size(); i++) {
-    if (tokens[i]->tok_type != IF && tokens[i]->tok_type != WHILE && tokens[i]->tok_type != FUNCTION) {
-      continue;
-    }
-    vector<con_token*>* subtokens = &tokens[i]->tokens;
-    tokens.insert(tokens.begin()+i+1, subtokens->begin(), subtokens->end());
-    subtokens->clear();
-    tokens.erase(tokens.begin()+i);
-  }
-}
-
-std::string tokens_to_nasm(std::vector<con_token*>& tokens) {
-  string output = "";
-  for (size_t i = 0; i < tokens.size(); i++) {
-    if (tokens[i]->tok_type == WHILE || tokens[i]->tok_type == IF
-        || tokens[i]->tok_type == FUNCTION || tokens[i]->tok_type == MACRO
-        || tokens[i]->tok_type == FUNCALL || tokens[i]->tok_type == SYSCALL) {
-      continue;
-    }
-    if (tokens[i]->tok_type == SECTION) {
-      output += "section " + tokens[i]->tok_section->name;
-    } else if (tokens[i]->tok_type == TAG) {
-      output += tokens[i]->tok_tag->name + ":";
-    } else if (tokens[i]->tok_type == CMD) {
-      output += tokens[i]->tok_cmd->command;
-      if (!tokens[i]->tok_cmd->arg1.empty()) {
-        output += " " + tokens[i]->tok_cmd->arg1;
-      }
-      if (!tokens[i]->tok_cmd->arg2.empty()) {
-        output += ", " + tokens[i]->tok_cmd->arg2;
-      }
-    }
-    output += "\n";
-  }
-  return output;
 }

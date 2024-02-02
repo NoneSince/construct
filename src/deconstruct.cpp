@@ -8,23 +8,112 @@
 
 using namespace std;
 
+static int get_line_indentation(const std::string& line);
+static CON_TOKENTYPE get_token_type(const std::string& line); // Expects formatted line
+static CON_COMPARISON str_to_comparison(const std::string& comp);
+
+static con_section* parse_section(const std::string& line);
+static con_tag* parse_tag(const std::string& line);
+static con_while* parse_while(const std::string& line);
+static con_if* parse_if(const std::string& line);
+static con_function* parse_function(const std::string& line);
+static con_cmd* parse_cmd(const std::string& line);
+static con_macro* parse_macro(const std::string& line);
+static con_funcall* parse_funcall(const std::string& line);
+static con_syscall* parse_syscall(const std::string& line);
+static con_token* parse_line(const std::string& line);
+
 static std::vector<std::string> split(const std::string& input, const std::string& chars);
 static uint16_t get_syscall_number(const std::string& syscall_name);
 
-int get_line_indentation(string line) {
-  int indentation = 0;
-  for (size_t i = 0; i < line.size(); i++) {
-    if (line[i] == '\t') {
-      indentation++;
-      continue;
+std::vector<con_token*> delinearize_tokens(const std::vector<con_token*>& tokens) {
+  vector<con_token*> dl_tokens;
+
+  // Serves as parent "section" where all tokens belong to, convenient for algo
+  con_token* parent_token = new con_token;
+  parent_token->tok_type = SECTION;
+  parent_token->tok_section = new con_section; // is deleted inside parent_token
+  parent_token->indentation = -1;
+
+  stack<con_token*> parent_stack;
+  parent_stack.push(parent_token);
+  dl_tokens.push_back(parent_token);
+
+
+  // When a new while, if or function is encountered it is pushed to the top of the parent_stack
+  // All tokens with the indentation of the top of the parent_stack+1
+  // are then added to the elem at the top of the stack (ptr so also to elem in vector).
+  // If token is while, if or function it is pushed to stack and becomes new parent.
+  // if indentation goes up, new token is pushed to stack, when indentation goes down,
+  // tops of stack are popped off by how much it decreased.
+  for (vector<con_token*>::const_iterator c_it = tokens.cbegin(); c_it != tokens.cend(); ++c_it) {
+    if ((*c_it)->indentation - parent_stack.top()->indentation <= 0) {
+      int indentation_diff = parent_stack.top()->indentation - (*c_it)->indentation + 1;
+      for (int i = 0; i < indentation_diff; ++i) {
+        parent_stack.pop();
+      }
     }
-    return indentation;
+    if ((*c_it)->indentation - parent_stack.top()->indentation == 1) {
+      parent_stack.top()->tokens.push_back(*c_it);
+    }
+    if ((*c_it)->tok_type == WHILE || (*c_it)->tok_type == IF || (*c_it)->tok_type == FUNCTION) {
+      parent_stack.push(*c_it);
+    }
   }
-  return -1;
+
+  vector<con_token*> delinearized_tokens = parent_token->tokens;
+
+  delete parent_token;
+  parent_token = nullptr;
+  return delinearized_tokens;
 }
 
-// Expects formatted line
-CON_TOKENTYPE get_token_type(string line) {
+std::vector<con_token*> parse_construct(const std::string& code) {
+  vector<string> code_split = split(code, "\n");
+  vector<con_token*> tokens;
+  bool in_data = false;
+  for (size_t i = 0; i < code_split.size(); ++i) {
+    // Check if it contains any alphabet chars
+    if (code_split[i].find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!") == std::string::npos) {
+      continue;
+    }
+    con_token* new_token = nullptr;
+    try {
+      new_token = parse_line(code_split[i]);
+    }
+    catch (const std::exception& e) {
+      throw std::runtime_error("Line "+to_string(i)+" ["+code_split[i]+"] :"+e.what());
+    }
+    new_token->indentation = get_line_indentation(code_split[i]);
+    tokens.push_back(new_token);
+    if (new_token->tok_type == SECTION
+        && (new_token->tok_section->name == ".data" || new_token->tok_section->name == ".bss")) {
+      in_data = true;
+    } else if (new_token->tok_type == SECTION && new_token->tok_section->name == ".text") {
+      in_data = false;
+    } else if (in_data) {
+      //TODO free original con_x
+      con_cmd* data_cmd = new con_cmd;
+      data_cmd->command = code_split[i];
+      new_token->tok_type = CMD;
+      new_token->tok_cmd = data_cmd;
+    }
+  }
+  return tokens;
+}
+
+// ----- ----- ----- ----- ----- ----- helper functions impl ----- ----- ----- ----- -----
+
+int get_line_indentation(const std::string& line) {
+  int indentation = 0;
+  for (string::const_iterator c_it = line.begin(); c_it != line.begin(); ++c_it) {
+    if (*c_it != '\t') break;
+    ++indentation;
+  }
+  return indentation;
+}
+
+CON_TOKENTYPE get_token_type(const std::string& line) {
   vector<string> line_split = split(line, " "); // line_split is not empty
   if (line_split[0] == "section")
     return SECTION;
@@ -45,7 +134,7 @@ CON_TOKENTYPE get_token_type(string line) {
   return CMD;
 }
 
-CON_COMPARISON str_to_comparison(string comp) {
+CON_COMPARISON str_to_comparison(const std::string& comp) {
   if (comp == "e")
     return E;
   if (comp == "ne")
@@ -61,62 +150,18 @@ CON_COMPARISON str_to_comparison(string comp) {
   throw invalid_argument("Invalid comparison sing: "+comp);
 }
 
-
-vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens) {
-  vector<con_token*> dl_tokens;
-
-  // Serves as parent "section" where all tokens belong to, convenient for algo
-  con_token* parent_token = new con_token;
-  parent_token->tok_type = SECTION;
-  parent_token->tok_section = new con_section; // is deleted inside parent_token
-  parent_token->indentation = -1;
-
-  stack<con_token*> parent_stack;
-  parent_stack.push(parent_token);
-  dl_tokens.push_back(parent_token);
-
-
-  // When a new while, if or function is encountered it is pushed to the top of the parent_stack
-  // All tokens with the indentation of the top of the parent_stack+1
-  // are then added to the elem at the top of the stack (ptr so also to elem in vector).
-  // If token is while, if or function it is pushed to stack and becomes new parent.
-  // if indentation goes up, new token is pushed to stack, when indentation goes down,
-  // tops of stack are popped off by how much it decreased.
-  for (size_t i = 0; i < tokens.size(); i++) {
-    if (tokens[i]->indentation - parent_stack.top()->indentation <= 0) {
-      int indentation_diff = parent_stack.top()->indentation - tokens[i]->indentation + 1;
-      for (int j = 0; j < indentation_diff; j++) {
-        parent_stack.pop();
-      }
-    }
-    if (tokens[i]->indentation - parent_stack.top()->indentation == 1) {
-      parent_stack.top()->tokens.push_back(tokens[i]);
-    }
-    if (tokens[i]->tok_type == WHILE || tokens[i]->tok_type == IF || tokens[i]->tok_type == FUNCTION) {
-      parent_stack.push(tokens[i]);
-    }
-  }
-
-  vector<con_token*> delinearized_tokens = parent_token->tokens;
-
-  delete parent_token;
-  parent_token = nullptr;
-
-  return delinearized_tokens;
-}
-
-con_section* parse_section(string line) { // section name // section . name ??
+con_section* parse_section(const std::string& line) { // section name // section . name ??
   con_section* tok_section = new con_section();
   vector<string> line_split = split(line, " ");
   tok_section->name = line_split[1];
   return tok_section;
 }
-con_tag* parse_tag(string line) { // name: // name : ??
+con_tag* parse_tag(const std::string& line) { // name: // name : ??
   con_tag* tok_tag = new con_tag();
   tok_tag->name = line.substr(0, line.size()-1);
   return tok_tag;
 }
-con_while* parse_while(string line) { // while val1 comp val2:
+con_while* parse_while(const std::string& line) { // while val1 comp val2:
   con_while* tok_while = new con_while();
   vector<string> line_split = split(line, " :");
   tok_while->condition.arg1 = line_split[1];
@@ -124,7 +169,7 @@ con_while* parse_while(string line) { // while val1 comp val2:
   tok_while->condition.arg2 = line_split[3];
   return tok_while;
 }
-con_if* parse_if(string line) { // if val1 comp val2:
+con_if* parse_if(const std::string& line) { // if val1 comp val2:
   con_if* tok_if = new con_if();
   vector<string> line_split = split(line, " :");
   tok_if->condition.arg1 = line_split[1];
@@ -132,11 +177,11 @@ con_if* parse_if(string line) { // if val1 comp val2:
   tok_if->condition.arg2 = line_split[3];
   return tok_if;
 }
-con_function* parse_function(string line) { // function func(arg1, arg2, ...):
+con_function* parse_function(const std::string& line) { // function func(arg1, arg2, ...):
   con_function* tok_function = new con_function();
   vector<string> line_split = split(line, " ():,");
   tok_function->name = line_split[1];
-  for (size_t i = 2; i < line_split.size(); i++) {
+  for (size_t i = 2; i < line_split.size(); ++i) {
     if (line_split[i].empty()) {
       continue;
     }
@@ -144,7 +189,7 @@ con_function* parse_function(string line) { // function func(arg1, arg2, ...):
   }
   return tok_function;
 }
-con_cmd* parse_cmd(string line) { // op // op arg1 // op arg1, arg2
+con_cmd* parse_cmd(const std::string& line) { // op // op arg1 // op arg1, arg2
   con_cmd* tok_cmd = new con_cmd();
   vector<string> line_split = split(line, " ,");
   tok_cmd->command = line_split[0];
@@ -154,44 +199,42 @@ con_cmd* parse_cmd(string line) { // op // op arg1 // op arg1, arg2
     tok_cmd->arg2 = line_split[2];
   return tok_cmd;
 }
-con_macro* parse_macro(string line) { // !name reg
+con_macro* parse_macro(const std::string& line) { // !name reg
   con_macro* tok_macro = new con_macro();
   vector<string> line_split = split(line, " !");
   tok_macro->macro = line_split[0];
   tok_macro->value = line_split[1];
   return tok_macro;
 }
-con_funcall* parse_funcall(string line) { // call func(arg1, arg2, ...)
+con_funcall* parse_funcall(const std::string& line) { // call func(arg1, arg2, ...)
   con_funcall* tok_funcall = new con_funcall();
   vector<string> line_split = split(line, " (),");
   tok_funcall->funcname = line_split[1];
-  for (size_t i = 2; i < line_split.size(); i++) {
+  for (size_t i = 2; i < line_split.size(); ++i) {
     if (line_split[i].empty()) throw invalid_argument("Invalid syntax");
     tok_funcall->arguments.push_back(line_split[i]);
   }
   return tok_funcall;
 }
-con_syscall* parse_syscall(string line) {// syscall sysc(arg1, arg2, ...)
+con_syscall* parse_syscall(const std::string& line) { // syscall sysc(arg1, arg2, ...)
   vector<string> line_split = split(line, " (),");
   con_syscall* tok_syscall = new con_syscall();
   tok_syscall->number = get_syscall_number(line_split[1]);
-  for (size_t i = 2; i < line_split.size(); i++) {
+  for (size_t i = 2; i < line_split.size(); ++i) {
     if (line_split[i].empty()) throw invalid_argument("Invalid syntax");
     tok_syscall->arguments.push_back(line_split[i]);
   }
   return tok_syscall;
 }
-
-// Does not expect formatted line, only lowercase
-con_token* parse_line(string line) {
+con_token* parse_line(const std::string& line) {
   con_token* token = new con_token;
   //remove multiple spaces from line
   string f_line = "";
   bool caught_space = false;
-  for (string::iterator it = line.begin(); it != line.end(); ++it) {
-    bool is_space = (*it == ' ');
-    if (*it == '\t' || (is_space && caught_space)) continue;
-    f_line += *it;
+  for (string::const_iterator c_it = line.cbegin(); c_it != line.cend(); ++c_it) {
+    bool is_space = (*c_it == ' ');
+    if (*c_it == '\t' || (is_space && caught_space)) continue;
+    f_line += *c_it;
     caught_space = is_space;
   }
   token->tok_type = get_token_type(f_line);
@@ -226,41 +269,6 @@ con_token* parse_line(string line) {
   }
   return token;
 }
-vector<con_token*> parse_construct(string code) {
-  vector<string> code_split = split(code, "\n");
-  vector<con_token*> tokens;
-  bool in_data = false;
-  for (size_t i = 0; i < code_split.size(); i++) {
-    // Check if it contains any alphabet chars
-    if (code_split[i].find_first_of("abcdefghijklmnopqrstuvwxyz!") == std::string::npos) {
-      continue;
-    }
-    con_token* new_token = nullptr;
-    try {
-      new_token = parse_line(code_split[i]);
-    }
-    catch (const std::exception& e) {
-      throw std::runtime_error("Line "+to_string(i)+" ["+code_split[i]+"] :"+e.what());
-    }
-    new_token->indentation = get_line_indentation(code_split[i]);
-    tokens.push_back(new_token);
-    if (new_token->tok_type == SECTION
-        && (new_token->tok_section->name == ".data" || new_token->tok_section->name == ".bss")) {
-      in_data = true;
-    } else if (new_token->tok_type == SECTION && new_token->tok_section->name == ".text") {
-      in_data = false;
-    } else if (in_data) {
-      //TODO free original con_x
-      con_cmd* data_cmd = new con_cmd;
-      data_cmd->command = code_split[i];
-      new_token->tok_type = CMD;
-      new_token->tok_cmd = data_cmd;
-    }
-  }
-  return tokens;
-}
-
-// ----- ----- ----- ----- ----- ----- helper functions impl ----- ----- ----- ----- -----
 
 std::vector<std::string> split(const std::string& input, const std::string& chars) {
   vector<string> result;
