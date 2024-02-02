@@ -5,8 +5,7 @@
 #include "construct_types.h"
 #include "reconstruct.h"     // comparison_to_string()
 
-std::string tokentype_to_string(CON_TOKENTYPE type)
-{
+std::string tokentype_to_string(CON_TOKENTYPE type) {
   switch (type) {
     case SECTION:
       return "section";
@@ -17,21 +16,18 @@ std::string tokentype_to_string(CON_TOKENTYPE type)
     case IF:
       return "if";
     case FUNCTION:
-      return "function";
+      return "func";
     case CMD:
       return "cmd";
     case MACRO:
       return "macro";
     case FUNCALL:
       return "funcall";
-    case SYSCALL:
-      return "syscall";
   }
   throw std::invalid_argument("Invalid token type: "+std::to_string(static_cast<int>(type)));
 }
 
-std::string token_to_string(con_token token)
-{
+std::string token_to_string(con_token token) {
   std::string tokstring = "type: " + tokentype_to_string(token.tok_type);
   switch (token.tok_type) {
     case SECTION:
@@ -41,12 +37,10 @@ std::string token_to_string(con_token token)
       tokstring += ", name: " + token.tok_tag->name;
       break;
     case WHILE:
-      tokstring += ", condition: " + token.tok_while->condition.arg1 + " "
-        + comparison_to_string(token.tok_while->condition.op) + " " + token.tok_while->condition.arg2;
+      tokstring += ", condition: " + token.tok_while->condition.arg1 + " " + comparison_to_string(token.tok_while->condition.op) + " " + token.tok_while->condition.arg2;
       break;
     case IF:
-      tokstring += ", condition: " + token.tok_if->condition.arg1 + " "
-        + comparison_to_string(token.tok_if->condition.op) + " " + token.tok_if->condition.arg2;
+      tokstring += ", condition: " + token.tok_if->condition.arg1 + " " + comparison_to_string(token.tok_if->condition.op) + " " + token.tok_if->condition.arg2;
       break;
     case FUNCTION:
       tokstring += ", function: " + token.tok_function->name + ", arguments: ";
