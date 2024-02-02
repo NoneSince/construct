@@ -7,8 +7,7 @@ extern CON_BITWIDTH bitwidth;
 
 using namespace std;
 
-int set_bitwidth(char* argv)
-{
+int set_bitwidth(char* argv) {
   if (string(argv) == "elf8") {
     bitwidth = BIT8;
     return 0;
@@ -29,26 +28,25 @@ int set_bitwidth(char* argv)
   return -1;
 }
 
-int handle_flags(int argc, char** argv, string* path, string* outpath)
-{
+int handle_flags(int argc, char** argv, string* path, string* outpath) {
   bool bitwidth_set = false;
   bool path_set = false;
   bool outpath_set = false;
-  for (int i = 1; i < argc; i++) {
+  for (int i = 1; i < argc; ++i) {
     if (string(argv[i]) == "-f" && set_bitwidth(argv[i+1]) == 0) {
       bitwidth_set = true;
-      i++;
+      ++i;
       continue;
     }
     if (string(argv[i]) == "-i") {
       path_set = true;
-      i++;
+      ++i;
       (*path) = argv[i];
       continue;
     }
     if (string(argv[i]) == "-o") {
       outpath_set = true;
-      i++;
+      ++i;
       (*outpath) = argv[i];
       continue;
     }

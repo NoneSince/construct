@@ -5,8 +5,7 @@
 #include "construct_types.h"
 #include "reconstruct.h"     // comparison_to_string()
 
-std::string tokentype_to_string(CON_TOKENTYPE type)
-{
+std::string tokentype_to_string(CON_TOKENTYPE type) {
   switch (type) {
     case SECTION:
       return "section";
@@ -30,8 +29,7 @@ std::string tokentype_to_string(CON_TOKENTYPE type)
   throw std::invalid_argument("Invalid token type: "+std::to_string(static_cast<int>(type)));
 }
 
-std::string token_to_string(con_token token)
-{
+std::string token_to_string(con_token token) {
   std::string tokstring = "type: " + tokentype_to_string(token.tok_type);
   switch (token.tok_type) {
     case SECTION:
@@ -50,7 +48,7 @@ std::string token_to_string(con_token token)
       break;
     case FUNCTION:
       tokstring += ", function: " + token.tok_function->name + ", arguments: ";
-      for (size_t i = 0; i < token.tok_function->arguments.size(); i++) {
+      for (size_t i = 0; i < token.tok_function->arguments.size(); ++i) {
         if (i != 0) {
           tokstring += ", ";
         }
@@ -76,7 +74,7 @@ std::string token_to_string(con_token token)
   }
   if (token.tokens.size() > 0) {
     tokstring += ", tokens: {\n";
-    for (size_t i = 0; i < token.tokens.size(); i++) {
+    for (size_t i = 0; i < token.tokens.size(); ++i) {
       tokstring += token_to_string(*token.tokens[i]) + "\n";
     }
     tokstring += "}";

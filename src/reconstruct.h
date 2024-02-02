@@ -5,13 +5,9 @@
 #include <vector>
 #include "construct_types.h"
 
-// Used for naming tags
-extern int if_amnt;
-extern int while_amnt;
 extern CON_BITWIDTH bitwidth;
 
-std::string comparison_to_string(CON_COMPARISON condition);
-CON_COMPARISON get_comparison_inverse(CON_COMPARISON condition);
+std::string comparison_to_string(const CON_COMPARISON& condition);
 
 // The following functions transform the construct specific tokens to nasm ones,
 // the parent construct tokens remain, but are removed during linearization
@@ -27,6 +23,6 @@ void apply_syscalls(std::vector<con_token*>& tokens);
 // During linearization, the construct parent tokens are removed
 void linearize_tokens(std::vector<con_token*>& tokens);
 
-std::string tokens_to_nasm(std::vector<con_token*>& tokens);
+std::string tokens_to_nasm(const std::vector<con_token*>& tokens);
 
 #endif // RECONSTRUCT_H_
