@@ -23,22 +23,17 @@ static con_funcall* parse_funcall(const std::string& line);
 static con_syscall* parse_syscall(const std::string& line);
 static con_token* parse_line(const std::string& line);
 
-static std::vector<std::string> split(const std::string& input, const std::string& chars);
+static std::vector<std::string> split(const std::string& input, const std::string& delims);
 static uint16_t get_syscall_number(const std::string& syscall_name);
 
-std::vector<con_token*> delinearize_tokens(const std::vector<con_token*>& tokens) {
-  vector<con_token*> dl_tokens;
+std::vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens) {
 
   // Serves as parent "section" where all tokens belong to, convenient for algo
-  con_token* parent_token = new con_token;
-  parent_token->tok_type = SECTION;
-  parent_token->tok_section = new con_section; // is deleted inside parent_token
-  parent_token->indentation = -1;
+  con_token parent_token(SECTION);
+  parent_token.indentation = -1;
 
   stack<con_token*> parent_stack;
-  parent_stack.push(parent_token);
-  dl_tokens.push_back(parent_token);
-
+  parent_stack.push(&parent_token);
 
   // When a new while, if or function is encountered it is pushed to the top of the parent_stack
   // All tokens with the indentation of the top of the parent_stack+1
@@ -46,25 +41,22 @@ std::vector<con_token*> delinearize_tokens(const std::vector<con_token*>& tokens
   // If token is while, if or function it is pushed to stack and becomes new parent.
   // if indentation goes up, new token is pushed to stack, when indentation goes down,
   // tops of stack are popped off by how much it decreased.
-  for (vector<con_token*>::const_iterator c_it = tokens.cbegin(); c_it != tokens.cend(); ++c_it) {
-    if ((*c_it)->indentation - parent_stack.top()->indentation <= 0) {
-      int indentation_diff = parent_stack.top()->indentation - (*c_it)->indentation + 1;
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it) {
+    int delta_indentation = (*it)->indentation - parent_stack.top()->indentation;
+    if (delta_indentation <= 0) {
+      int indentation_diff = -1*delta_indentation + 1;
       for (int i = 0; i < indentation_diff; ++i) {
         parent_stack.pop();
       }
     }
-    if ((*c_it)->indentation - parent_stack.top()->indentation == 1) {
-      parent_stack.top()->tokens.push_back(*c_it);
-    }
-    if ((*c_it)->tok_type == WHILE || (*c_it)->tok_type == IF || (*c_it)->tok_type == FUNCTION) {
-      parent_stack.push(*c_it);
+    parent_stack.top()->tokens.push_back(*it);
+    if ((*it)->tok_type == WHILE || (*it)->tok_type == IF || (*it)->tok_type == FUNCTION) {
+      parent_stack.push(*it);
     }
   }
 
-  vector<con_token*> delinearized_tokens = parent_token->tokens;
-
-  delete parent_token;
-  parent_token = nullptr;
+  vector<con_token*> delinearized_tokens = parent_token.tokens;
+  parent_token.tokens.clear(); // moved the pointers to delinearized_tokens
   return delinearized_tokens;
 }
 
@@ -80,24 +72,28 @@ std::vector<con_token*> parse_construct(const std::string& code) {
     con_token* new_token = nullptr;
     try {
       new_token = parse_line(code_split[i]);
+      new_token->indentation = get_line_indentation(code_split[i]);
+      if (!tokens.empty() && new_token->indentation - tokens.back()->indentation > 1) {
+        throw invalid_argument("Syntax error: extra indentation: indentation jumped from "+
+                                to_string(tokens.back()->indentation)+" to "+to_string(new_token->indentation)+"!");
+      }
     }
     catch (const std::exception& e) {
-      throw std::runtime_error("Line "+to_string(i)+" ["+code_split[i]+"] :"+e.what());
+      throw std::runtime_error("Line "+to_string(i)+" ["+code_split[i]+"]: "+e.what());
     }
-    new_token->indentation = get_line_indentation(code_split[i]);
-    tokens.push_back(new_token);
     if (new_token->tok_type == SECTION
         && (new_token->tok_section->name == ".data" || new_token->tok_section->name == ".bss")) {
       in_data = true;
     } else if (new_token->tok_type == SECTION && new_token->tok_section->name == ".text") {
       in_data = false;
     } else if (in_data) {
-      //TODO free original con_x
-      con_cmd* data_cmd = new con_cmd;
-      data_cmd->command = code_split[i];
-      new_token->tok_type = CMD;
-      new_token->tok_cmd = data_cmd;
+      int indentation = new_token->indentation;
+      delete new_token;
+      new_token = new con_token(CMD);
+      new_token->tok_cmd->command = code_split[i];
+      new_token->indentation = indentation;
     }
+    tokens.push_back(new_token);
   }
   return tokens;
 }
@@ -106,7 +102,7 @@ std::vector<con_token*> parse_construct(const std::string& code) {
 
 int get_line_indentation(const std::string& line) {
   int indentation = 0;
-  for (string::const_iterator c_it = line.begin(); c_it != line.begin(); ++c_it) {
+  for (string::const_iterator c_it = line.begin(); c_it != line.end(); ++c_it) {
     if (*c_it != '\t') break;
     ++indentation;
   }
@@ -217,8 +213,8 @@ con_funcall* parse_funcall(const std::string& line) { // call func(arg1, arg2, .
   return tok_funcall;
 }
 con_syscall* parse_syscall(const std::string& line) { // syscall sysc(arg1, arg2, ...)
-  vector<string> line_split = split(line, " (),");
   con_syscall* tok_syscall = new con_syscall();
+  vector<string> line_split = split(line, " (),");
   tok_syscall->number = get_syscall_number(line_split[1]);
   for (size_t i = 2; i < line_split.size(); ++i) {
     if (line_split[i].empty()) throw invalid_argument("Invalid syntax");
@@ -270,27 +266,24 @@ con_token* parse_line(const std::string& line) {
   return token;
 }
 
-std::vector<std::string> split(const std::string& input, const std::string& chars) {
+std::vector<std::string> split(const std::string& input, const std::string& delims) {
   vector<string> result;
   string tmp;
-  bool prev_is_delim = false;
   for (string::const_iterator input_it = input.cbegin(); input_it != input.cend(); ++input_it) {
-    bool is_in_chars = false;
-    for (string::const_iterator chars_it = chars.cbegin(); chars_it != chars.cend(); ++chars_it) {
-      if (*chars_it == *input_it) {
-        is_in_chars = true;
+    bool is_delim = false;
+    for (string::const_iterator delims_it = delims.cbegin(); delims_it != delims.cend(); ++delims_it) {
+      if (*delims_it == *input_it) {
+        is_delim = true;
         break;
       }
     }
-    if (is_in_chars) {
-      if (prev_is_delim) continue;
-      if (!tmp.empty())
+    if (is_delim) {
+      if (!tmp.empty()) {
         result.push_back(tmp);
-      tmp.clear();
-      prev_is_delim = true;
+        tmp.clear();
+      }
     } else {
       tmp.push_back(*input_it);
-      prev_is_delim = false;
     }
   }
   if (!tmp.empty())
