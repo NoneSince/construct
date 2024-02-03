@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 enum CON_BITWIDTH {
   BIT8,
@@ -96,6 +97,42 @@ struct con_token {
   con_syscall* tok_syscall = nullptr;
   std::vector<con_token*> tokens; // relevant to "if", "while", "function" and "syscall" tokens
 
+  con_token() = default;
+  explicit con_token(CON_TOKENTYPE tok_type) : tok_type(tok_type) {
+    switch (tok_type) {
+      case SECTION:
+        tok_section = new con_section;
+      break;
+      case TAG:
+        tok_tag = new con_tag;
+      break;
+      case WHILE:
+        tok_while = new con_while;
+      break;
+      case IF:
+        tok_if = new con_if;
+      break;
+      case FUNCTION:
+        tok_function = new con_function;
+      break;
+      case CMD:
+        tok_cmd = new con_cmd;
+      break;
+      case MACRO:
+        tok_macro = new con_macro;
+      break;
+      case FUNCALL:
+        tok_funcall = new con_funcall;
+      break;
+      case SYSCALL:
+        tok_syscall = new con_syscall;
+      break;
+      default:
+        throw std::invalid_argument("Invalid token type: "+std::to_string(static_cast<int>(tok_type)));
+      break;
+    }
+  }
+
   ~con_token() {
     switch (tok_type) {
       case SECTION:
@@ -125,6 +162,11 @@ struct con_token {
       case SYSCALL:
         if (tok_syscall != nullptr) delete tok_syscall;
       break;
+      default:
+      break;
+    }
+    for (std::vector<con_token*>::reverse_iterator r_it = tokens.rbegin(); r_it != tokens.rend(); ++r_it) {
+      delete *r_it;
     }
   }
 };
