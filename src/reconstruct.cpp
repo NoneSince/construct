@@ -162,14 +162,14 @@ void apply_syscalls(std::vector<con_token*>& tokens) {
       continue;
     }
     vector<con_token*> arg_tokens = push_args((*it)->tok_syscall->arguments, bitwidth);
-    con_token* call_tok1 = new con_token(CMD);
-    call_tok1->tok_cmd->command = "mov";
-    call_tok1->tok_cmd->arg1 = "rax";
-    call_tok1->tok_cmd->arg2 = to_string((*it)->tok_syscall->number);
-    arg_tokens.push_back(call_tok1);
-    con_token* call_tok2 = new con_token(CMD);
-    call_tok2->tok_cmd->command = "syscall";
-    arg_tokens.push_back(call_tok2);
+    con_token* rax_token = new con_token(CMD);
+    rax_token->tok_cmd->command = "mov";
+    rax_token->tok_cmd->arg1 = "rax";
+    rax_token->tok_cmd->arg2 = to_string((*it)->tok_syscall->number);
+    arg_tokens.push_back(rax_token);
+    con_token* syscall_token = new con_token(CMD);
+    syscall_token->tok_cmd->command = "syscall";
+    arg_tokens.push_back(syscall_token);
 
     it = tokens.insert(it+1, arg_tokens.begin(), arg_tokens.end()) - 1;
   }
@@ -209,6 +209,8 @@ std::string tokens_to_nasm(const std::vector<con_token*>& tokens) {
       if (!(*c_it)->tok_cmd->arg2.empty()) {
         output += ", " + (*c_it)->tok_cmd->arg2;
       }
+    } else if ((*c_it)->tok_type == DATA) {
+      output += (*c_it)->tok_data->line;
     }
     output += "\n";
   }
@@ -241,90 +243,90 @@ std::string reg_to_str(const uint8_t& call_num, const CON_BITWIDTH& bitwidth) {
       switch (call_num) {
         case 0:
           return "dil";
-        break;
+          break;
         case 1:
           return "sil";
-        break;
+          break;
         case 2:
           return "dl";
-        break;
+          break;
         case 3:
           return "cl";
-        break;
+          break;
         case 4:
           return "r8b";
-        break;
+          break;
         case 5:
           return "r9b";
-        break;
+          break;
       }
-    break;
+      break;
     case BIT16:
       switch (call_num) {
         case 0:
           return "di";
-        break;
+          break;
         case 1:
           return "si";
-        break;
+          break;
         case 2:
           return "dx";
-        break;
+          break;
         case 3:
           return "cx";
-        break;
+          break;
         case 4:
           return "r8w";
-        break;
+          break;
         case 5:
           return "r9w";
-        break;
+          break;
       }
-    break;
+      break;
     case BIT32:
       switch (call_num) {
         case 0:
           return "edi";
-        break;
+          break;
         case 1:
           return "esi";
-        break;
+          break;
         case 2:
           return "edx";
-        break;
+          break;
         case 3:
           return "ecx";
-        break;
+          break;
         case 4:
           return "r8d";
-        break;
+          break;
         case 5:
           return "r9d";
-        break;
+          break;
       }
-    break;
+      break;
     case BIT64:
       switch (call_num) {
         case 0:
           return "rdi";
-        break;
+          break;
         case 1:
           return "rsi";
-        break;
+          break;
         case 2:
           return "rdx";
-        break;
+          break;
         case 3:
           return "rcx";
-        break;
+          break;
         case 4:
           return "r8";
-        break;
+          break;
         case 5:
           return "r9";
-        break;
+          break;
       }
-    break;
+      break;
   }
   throw invalid_argument("Invalid bitwidth or call_num: bitwidth="+to_string(static_cast<int>(bitwidth))
                          +" call_num="+to_string(static_cast<int>(call_num)));
@@ -374,7 +376,7 @@ void apply_macro_to_token(con_token* token, const vector<con_macro*>& macros) {
           token->tok_while->condition.arg2.replace(pos, macro.size(), value);
           pos = find_macro_in_arg(token->tok_while->condition.arg2, macro);
         }
-      break;
+        break;
       case IF:
         pos = find_macro_in_arg(token->tok_if->condition.arg1, macro);
         while (pos != string::npos) {
@@ -386,7 +388,7 @@ void apply_macro_to_token(con_token* token, const vector<con_macro*>& macros) {
           token->tok_if->condition.arg2.replace(pos, macro.size(), value);
           pos = find_macro_in_arg(token->tok_if->condition.arg2, macro);
         }
-      break;
+        break;
       case CMD:
         pos = find_macro_in_arg(token->tok_cmd->arg1, macro);
         while (pos != string::npos) {
@@ -398,9 +400,9 @@ void apply_macro_to_token(con_token* token, const vector<con_macro*>& macros) {
           token->tok_cmd->arg2.replace(pos, macro.size(), value);
           pos = find_macro_in_arg(token->tok_cmd->arg2, macro);
         }
-      break;
+        break;
       default:
-      break;
+        break;
     }
   }
 }

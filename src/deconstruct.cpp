@@ -9,7 +9,7 @@
 using namespace std;
 
 static int get_line_indentation(const std::string& line);
-static CON_TOKENTYPE get_token_type(const std::string& line); // Expects formatted line
+static CON_TOKENTYPE get_token_type(const std::string& line, const bool& in_data); // Expects formatted line
 static CON_COMPARISON str_to_comparison(const std::string& comp);
 
 static con_section* parse_section(const std::string& line);
@@ -21,9 +21,15 @@ static con_cmd* parse_cmd(const std::string& line);
 static con_macro* parse_macro(const std::string& line);
 static con_funcall* parse_funcall(const std::string& line);
 static con_syscall* parse_syscall(const std::string& line);
-static con_token* parse_line(const std::string& line);
+static con_data* parse_data(const std::string& line);
+
+static con_token* parse_line(const std::string& line, const bool& in_data);
 
 static std::vector<std::string> split(const std::string& input, const std::string& delims);
+static std::vector<std::string> split_first(const std::string& input, const std::string& delims);
+static std::string join(const std::vector<std::string>& input, const std::string& delim);
+static std::string remove_duplicate(const std::string& input, const char& delim);
+
 static uint16_t get_syscall_number(const std::string& syscall_name);
 
 std::vector<con_token*> delinearize_tokens(std::vector<con_token*> tokens) {
@@ -71,7 +77,7 @@ std::vector<con_token*> parse_construct(const std::string& code) {
     }
     con_token* new_token = nullptr;
     try {
-      new_token = parse_line(code_split[i]);
+      new_token = parse_line(code_split[i], in_data);
       new_token->indentation = get_line_indentation(code_split[i]);
       if (!tokens.empty() && new_token->indentation - tokens.back()->indentation > 1) {
         throw invalid_argument("Syntax error: extra indentation: indentation jumped from "+
@@ -86,12 +92,6 @@ std::vector<con_token*> parse_construct(const std::string& code) {
       in_data = true;
     } else if (new_token->tok_type == SECTION && new_token->tok_section->name == ".text") {
       in_data = false;
-    } else if (in_data) {
-      int indentation = new_token->indentation;
-      delete new_token;
-      new_token = new con_token(CMD);
-      new_token->tok_cmd->command = code_split[i];
-      new_token->indentation = indentation;
     }
     tokens.push_back(new_token);
   }
@@ -108,8 +108,7 @@ int get_line_indentation(const std::string& line) {
   }
   return indentation;
 }
-
-CON_TOKENTYPE get_token_type(const std::string& line) {
+CON_TOKENTYPE get_token_type(const std::string& line, const bool& in_data) {
   vector<string> line_split = split(line, " "); // line_split is not empty
   if (line_split[0] == "section")
     return SECTION;
@@ -127,9 +126,10 @@ CON_TOKENTYPE get_token_type(const std::string& line) {
     return FUNCALL;
   if (line_split[0] == "syscall" && line.find('(') != string::npos && line.find(')') != string::npos)
     return SYSCALL;
+  if (in_data)
+    return DATA;
   return CMD;
 }
-
 CON_COMPARISON str_to_comparison(const std::string& comp) {
   if (comp == "e")
     return E;
@@ -187,12 +187,32 @@ con_function* parse_function(const std::string& line) { // function func(arg1, a
 }
 con_cmd* parse_cmd(const std::string& line) { // op // op arg1 // op arg1, arg2
   con_cmd* tok_cmd = new con_cmd();
-  vector<string> line_split = split(line, " ,");
+  bool arg2_exists = false;
+  vector<string> line_split = split(line, ",");
+  if (line_split.size() > 2) {
+    throw invalid_argument("Syntax error: extra commas: the line has "+ to_string(line_split.size()-1)+" lines!");
+  }
+  if (line.back() == ',') {
+    throw invalid_argument("Syntax error: second argument does not exist!");
+  }
+  if (line_split.size() == 2) {
+    arg2_exists = true;
+    tok_cmd->arg2 = remove_duplicate(line_split[1], ' ');
+  }
+  line_split = split_first(line_split[0], " ");
+  if (line_split.size() == 0) {
+    throw invalid_argument("Syntax error: command and first argument do not exist!");
+  }
   tok_cmd->command = line_split[0];
-  if (line_split.size() > 1)
-    tok_cmd->arg1 = line_split[1];
-  if (line_split.size() > 2)
-    tok_cmd->arg2 = line_split[2];
+  if (line_split.size() == 2) {
+    tok_cmd->arg1 = remove_duplicate(line_split[1], ' ');
+  } else if (arg2_exists) {
+    throw invalid_argument("Syntax error: first argument does not exist!");
+  }
+  con_token print;
+  print.tok_type = CMD;
+  print.tok_cmd = tok_cmd;
+  print.tok_cmd = nullptr;
   return tok_cmd;
 }
 con_macro* parse_macro(const std::string& line) { // !name reg
@@ -222,7 +242,17 @@ con_syscall* parse_syscall(const std::string& line) { // syscall sysc(arg1, arg2
   }
   return tok_syscall;
 }
-con_token* parse_line(const std::string& line) {
+con_data* parse_data(const std::string& line) {
+  con_data* tok_data = new con_data();
+  tok_data->line = line;
+  con_token print;
+  print.tok_type = DATA;
+  print.tok_data = tok_data;
+  print.tok_data = nullptr;
+  return tok_data;
+}
+
+con_token* parse_line(const std::string& line, const bool& in_data) {
   con_token* token = new con_token;
   //remove multiple spaces from line
   string f_line = "";
@@ -233,7 +263,7 @@ con_token* parse_line(const std::string& line) {
     f_line += *c_it;
     caught_space = is_space;
   }
-  token->tok_type = get_token_type(f_line);
+  token->tok_type = get_token_type(f_line, in_data);
   switch (token->tok_type) {
     case SECTION:
       token->tok_section = parse_section(f_line);
@@ -262,6 +292,9 @@ con_token* parse_line(const std::string& line) {
     case SYSCALL:
       token->tok_syscall = parse_syscall(f_line);
       break;
+    case DATA:
+      token->tok_data = parse_data(f_line);
+      break;
   }
   return token;
 }
@@ -289,6 +322,50 @@ std::vector<std::string> split(const std::string& input, const std::string& deli
   if (!tmp.empty())
     result.push_back(tmp);
   return result;
+}
+std::vector<std::string> split_first(const std::string& input, const std::string& delims) {
+  vector<string> result;
+  string first_word;
+  string else_word;
+  for (string::const_iterator first_word_it = input.cbegin(); first_word_it != input.cend(); ++first_word_it) {
+    bool is_delim = false;
+    for (string::const_iterator delims_it = delims.cbegin(); delims_it != delims.cend(); ++delims_it) {
+      if (*delims_it == *first_word_it) {
+        is_delim = true;
+        break;
+      }
+    }
+    if (is_delim) {
+      if (!first_word.empty()) {
+        result.push_back(first_word);
+        for (string::const_iterator else_word_it = first_word_it+1; else_word_it != input.cend(); ++else_word_it) {
+          else_word.push_back(*else_word_it);
+        }
+        if (!else_word.empty())
+          result.push_back(else_word);
+        return result;
+      }
+    } else {
+      first_word.push_back(*first_word_it);
+    }
+  }
+  if (!first_word.empty())
+    result.push_back(first_word);
+  return result;
+}
+std::string join(const std::vector<std::string>& input, const std::string& delim) {
+  string result;
+  if (!input.empty()) {
+    result = *input.cbegin();
+    for (vector<string>::const_iterator input_it = input.cbegin()+1; input_it != input.cend(); ++input_it) {
+      result += delim + *input_it;
+    }
+  }
+  return result;
+}
+std::string remove_duplicate(const std::string& input, const char& delim) {
+  string to_str = "";
+  return join(split(input, to_str+delim), to_str+delim);
 }
 
 uint16_t get_syscall_number(const std::string& syscall_name) {
