@@ -25,6 +25,8 @@ std::string tokentype_to_string(CON_TOKENTYPE type) {
       return "funcall";
     case SYSCALL:
       return "syscall";
+    case DATA:
+      return "data";
   }
   throw std::invalid_argument("Invalid token type: "+std::to_string(static_cast<int>(type)));
 }
@@ -69,7 +71,26 @@ std::string token_to_string(con_token token) {
     case MACRO:
       tokstring += ", macro: " + token.tok_macro->macro + ", value: " + token.tok_macro->value;
       break;
-    default: // FUNCALL
+    case FUNCALL:
+      tokstring += ", funcname: "+token.tok_funcall->funcname+", arguments: ";
+      for (size_t i = 0; i < token.tok_funcall->arguments.size(); ++i) {
+        if (i != 0) {
+          tokstring += ", ";
+        }
+        tokstring += token.tok_funcall->arguments[i];
+      }
+      break;
+    case SYSCALL:
+      tokstring += ", number: "+std::to_string(token.tok_syscall->number)+", arguments: ";
+      for (size_t i = 0; i < token.tok_syscall->arguments.size(); ++i) {
+        if (i != 0) {
+          tokstring += ", ";
+        }
+        tokstring += token.tok_syscall->arguments[i];
+      }
+      break;
+    case DATA:
+      tokstring += ", line: "+token.tok_data->line;
       break;
   }
   if (token.tokens.size() > 0) {

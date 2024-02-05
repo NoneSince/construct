@@ -30,7 +30,8 @@ enum CON_TOKENTYPE {
   CMD,
   MACRO,
   FUNCALL,
-  SYSCALL
+  SYSCALL,
+  DATA
 };
 
 struct _con_condition {
@@ -82,6 +83,9 @@ struct con_syscall {
   std::vector<std::string> arguments;
 };
 
+struct con_data {
+  std::string line;
+};
 
 struct con_token {
   CON_TOKENTYPE tok_type;
@@ -95,6 +99,7 @@ struct con_token {
   con_macro* tok_macro = nullptr;
   con_funcall* tok_funcall = nullptr;
   con_syscall* tok_syscall = nullptr;
+  con_data* tok_data = nullptr;
   std::vector<con_token*> tokens; // relevant to "if", "while", "function" and "syscall" tokens
 
   con_token() = default;
@@ -102,34 +107,37 @@ struct con_token {
     switch (tok_type) {
       case SECTION:
         tok_section = new con_section;
-      break;
+        break;
       case TAG:
         tok_tag = new con_tag;
-      break;
+        break;
       case WHILE:
         tok_while = new con_while;
-      break;
+        break;
       case IF:
         tok_if = new con_if;
-      break;
+        break;
       case FUNCTION:
         tok_function = new con_function;
-      break;
+        break;
       case CMD:
         tok_cmd = new con_cmd;
-      break;
+        break;
       case MACRO:
         tok_macro = new con_macro;
-      break;
+        break;
       case FUNCALL:
         tok_funcall = new con_funcall;
-      break;
+        break;
       case SYSCALL:
         tok_syscall = new con_syscall;
-      break;
+        break;
+      case DATA:
+        tok_data = new con_data;
+        break;
       default:
         throw std::invalid_argument("Invalid token type: "+std::to_string(static_cast<int>(tok_type)));
-      break;
+        break;
     }
   }
 
@@ -137,33 +145,34 @@ struct con_token {
     switch (tok_type) {
       case SECTION:
         if (tok_section != nullptr) delete tok_section;
-      break;
+        break;
       case TAG:
         if (tok_tag != nullptr) delete tok_tag;
-      break;
+        break;
       case WHILE:
         if (tok_while != nullptr) delete tok_while;
-      break;
+        break;
       case IF:
         if (tok_if != nullptr) delete tok_if;
-      break;
+        break;
       case FUNCTION:
         if (tok_function != nullptr) delete tok_function;
-      break;
+        break;
       case CMD:
         if (tok_cmd != nullptr) delete tok_cmd;
-      break;
+        break;
       case MACRO:
         if (tok_macro != nullptr) delete tok_macro;
-      break;
+        break;
       case FUNCALL:
         if (tok_funcall != nullptr) delete tok_funcall;
-      break;
+        break;
       case SYSCALL:
         if (tok_syscall != nullptr) delete tok_syscall;
-      break;
-      default:
-      break;
+        break;
+      case DATA:
+        if (tok_data != nullptr) delete tok_data;
+        break;
     }
     for (std::vector<con_token*>::reverse_iterator r_it = tokens.rbegin(); r_it != tokens.rend(); ++r_it) {
       delete *r_it;
