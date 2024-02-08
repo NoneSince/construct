@@ -197,7 +197,7 @@ void set_indentation(std::vector<con_token*>& tokens, int parent_indentation) {
       set_indentation((*it)->tokens, parent_indentation);
       break;
     case FUNCTION:
-      // func_tag:
+      // funcname:
       //   ...
       // ret
       if (tokens.size() < 2) {
