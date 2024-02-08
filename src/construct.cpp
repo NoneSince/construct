@@ -32,8 +32,9 @@ int main(int argc, char** argv) {
   tokens.insert(tokens.begin(), glob_tok);
   glob_tok = nullptr;
 
-  // Order dependant: some tokens are replaced with macros, so apply_macro() must be at the end.
   tokens = delinearize_tokens(tokens);
+
+  // Order dependant: some tokens are replaced with macros, so apply_macro() must be at the end.
   apply_functions(tokens);
   apply_ifs(tokens);
   apply_whiles(tokens);
@@ -42,6 +43,8 @@ int main(int argc, char** argv) {
   std::vector<con_macro*> empty_macros; // pointer to con_macros in tokens, not a copy
   apply_macros(tokens, empty_macros);
   empty_macros.clear(); // remove the pointers to con_macro, not the con_macro objects themselves
+
+  set_indentation(tokens);
   linearize_tokens(tokens);
 
   std::ofstream outfile;

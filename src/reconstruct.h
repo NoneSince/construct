@@ -20,6 +20,8 @@ void apply_macros(std::vector<con_token*>& tokens, std::vector<con_macro*>& macr
 void apply_funcalls(std::vector<con_token*>& tokens);
 void apply_syscalls(std::vector<con_token*>& tokens);
 
+void set_indentation(std::vector<con_token*>& tokens, int parent_indentation = 0);
+
 // During linearization, the construct parent tokens are removed
 void linearize_tokens(std::vector<con_token*>& tokens);
 

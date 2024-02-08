@@ -89,7 +89,7 @@ struct con_data {
 
 struct con_token {
   CON_TOKENTYPE tok_type;
-  int indentation;
+  int indentation; // reused: deconstruct.cpp- number of tabs in input. reconstruct.cpp- number of tabs in output
   con_section* tok_section = nullptr;
   con_tag* tok_tag = nullptr;
   con_while* tok_while = nullptr;

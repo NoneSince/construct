@@ -175,6 +175,44 @@ void apply_syscalls(std::vector<con_token*>& tokens) {
   }
 }
 
+void set_indentation(std::vector<con_token*>& tokens, int parent_indentation) {
+  for (vector<con_token*>::iterator it = tokens.begin(); it != tokens.end(); ++it ) {
+    (*it)->indentation = parent_indentation;
+    switch ((*it)->tok_type) {
+    case WHILE:
+      //   startwhile0:
+      //     cmp rsi, rdi
+      //     jg endwhile0
+      //     ...
+      //     jmp startwhile0
+      //   endwhile0:
+      if (tokens.size() < 5) {
+        throw invalid_argument("while token has only "+to_string(tokens.size())+" subtokens. The least possible number is 5!");
+      }
+      set_indentation((*it)->tokens, parent_indentation+1);
+      (*it)->tokens.front()->indentation = parent_indentation;
+      (*it)->tokens.back()->indentation = parent_indentation;
+      break;
+    case IF:
+      set_indentation((*it)->tokens, parent_indentation);
+      break;
+    case FUNCTION:
+      // funcname:
+      //   ...
+      // ret
+      if (tokens.size() < 2) {
+        throw invalid_argument("function token has only "+to_string(tokens.size())+" subtokens. The least possible number is 2!");
+      }
+      set_indentation((*it)->tokens, parent_indentation+1);
+      (*it)->tokens.front()->indentation = parent_indentation;
+      (*it)->tokens.back()->indentation = parent_indentation;
+      break;
+    default:
+      break;
+    }
+  }
+}
+
 void linearize_tokens(std::vector<con_token*>& tokens) {
   vector<con_token*>::iterator it = tokens.begin();
   while (it != tokens.end()) {
@@ -197,6 +235,7 @@ std::string tokens_to_nasm(const std::vector<con_token*>& tokens) {
         || (*c_it)->tok_type == FUNCALL || (*c_it)->tok_type == SYSCALL) {
       continue;
     }
+    output += string((*c_it)->indentation,'\t');
     if ((*c_it)->tok_type == SECTION) {
       output += "section " + (*c_it)->tok_section->name;
     } else if ((*c_it)->tok_type == TAG) {
