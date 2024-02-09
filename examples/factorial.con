@@ -2,7 +2,7 @@ extern printf
 
 section .text
 
-function factorial(num):
+function factorial(num: dq):
 	!i rsi
 	!result rax
 	mov i, 2

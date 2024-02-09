@@ -117,8 +117,8 @@ void apply_functions(std::vector<con_token*>& tokens) {
     tag_tok->tok_tag->name = crntfunc->name;
     for (size_t j = 0; j < crntfunc->arguments.size(); ++j) {
       con_token* arg_tok = new con_token(MACRO);
-      arg_tok->tok_macro->value = reg_to_str(j, bitwidth);
-      arg_tok->tok_macro->macro = crntfunc->arguments[j];
+      arg_tok->tok_macro->value = reg_to_str(j, crntfunc->arguments[j].length);
+      arg_tok->tok_macro->macro = crntfunc->arguments[j].name;
 
       (*it)->tokens.insert((*it)->tokens.begin(), arg_tok);
     }
@@ -186,9 +186,8 @@ void set_indentation(std::vector<con_token*>& tokens, int parent_indentation) {
       //     ...
       //     jmp startwhile0
       //   endwhile0:
-      if (tokens.size() < 5) {
-        throw invalid_argument("while token has only "+to_string(tokens.size())+" subtokens. The least possible number is 5!");
-      }
+      assert_throw(tokens.size() >= 5, invalid_argument("while token has only "+to_string(tokens.size())+
+                                                       " subtokens. The least possible number is 5!"));
       set_indentation((*it)->tokens, parent_indentation+1);
       (*it)->tokens.front()->indentation = parent_indentation;
       (*it)->tokens.back()->indentation = parent_indentation;
@@ -200,9 +199,8 @@ void set_indentation(std::vector<con_token*>& tokens, int parent_indentation) {
       // funcname:
       //   ...
       // ret
-      if (tokens.size() < 2) {
-        throw invalid_argument("function token has only "+to_string(tokens.size())+" subtokens. The least possible number is 2!");
-      }
+      assert_throw(tokens.size() >= 2, invalid_argument("function token has only "+to_string(tokens.size())
+                                                       +" subtokens. The least possible number is 2!"));
       set_indentation((*it)->tokens, parent_indentation+1);
       (*it)->tokens.front()->indentation = parent_indentation;
       (*it)->tokens.back()->indentation = parent_indentation;
@@ -282,63 +280,46 @@ std::string reg_to_str(const uint8_t& call_num, const CON_BITWIDTH& bitwidth) {
       switch (call_num) {
         case 0:
           return "dil";
-          break;
         case 1:
           return "sil";
-          break;
         case 2:
           return "dl";
-          break;
         case 3:
           return "cl";
-          break;
         case 4:
           return "r8b";
-          break;
         case 5:
           return "r9b";
-          break;
       }
       break;
     case BIT16:
       switch (call_num) {
         case 0:
           return "di";
-          break;
         case 1:
           return "si";
-          break;
         case 2:
           return "dx";
-          break;
         case 3:
           return "cx";
-          break;
         case 4:
           return "r8w";
-          break;
         case 5:
           return "r9w";
-          break;
       }
       break;
     case BIT32:
       switch (call_num) {
         case 0:
           return "edi";
-          break;
         case 1:
           return "esi";
-          break;
         case 2:
           return "edx";
-          break;
         case 3:
           return "ecx";
-          break;
         case 4:
           return "r8d";
-          break;
         case 5:
           return "r9d";
           break;
@@ -348,27 +329,22 @@ std::string reg_to_str(const uint8_t& call_num, const CON_BITWIDTH& bitwidth) {
       switch (call_num) {
         case 0:
           return "rdi";
-          break;
         case 1:
           return "rsi";
-          break;
         case 2:
           return "rdx";
-          break;
         case 3:
           return "rcx";
-          break;
         case 4:
           return "r8";
-          break;
         case 5:
           return "r9";
-          break;
       }
       break;
+    default:
+      throw invalid_argument("Invalid call_num: "+to_string(static_cast<int>(call_num)));
   }
-  throw invalid_argument("Invalid bitwidth or call_num: bitwidth="+to_string(static_cast<int>(bitwidth))
-                         +" call_num="+to_string(static_cast<int>(call_num)));
+  throw invalid_argument("Invalid bitwidth: "+to_string(static_cast<int>(bitwidth)));
 }
 uint8_t str_to_reg(const std::string& reg_name) {
   if (reg_name=="dil" ||reg_name=="di" || reg_name=="edi" || reg_name=="rdi")
