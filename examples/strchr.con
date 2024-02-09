@@ -1,14 +1,13 @@
 extern printf
 
 section .text
-function strchr(str, chr):
+function strchr(str: dq, chr: db):
 	!ptrresult rax
-	!findchr sil
 	!end_of_str 0
 	!nullptr 0
 	mov ptrresult, nullptr
 	while byte[str] ne end_of_str:
-		if byte[str] e findchr:
+		if byte[str] e chr:
 			mov ptrresult, str
 			ret
 		inc str

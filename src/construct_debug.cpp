@@ -54,7 +54,7 @@ std::string token_to_string(con_token token) {
         if (i != 0) {
           tokstring += ", ";
         }
-        tokstring += token.tok_function->arguments[i];
+        tokstring += token.tok_function->arguments[i].name + "(" + std::to_string((int(token.tok_function->arguments[i].length)+1)*8) + ")";
       }
       break;
     case CMD:

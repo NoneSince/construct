@@ -5,6 +5,13 @@
 #include <vector>
 #include <stdexcept>
 
+#define assert_throw(cond, except) \
+while (false) {                    \
+  if (!(cond)) {                   \
+    throw (except);                \
+  }                                \
+}
+
 enum CON_BITWIDTH {
   BIT8,
   BIT16,
@@ -40,6 +47,13 @@ struct _con_condition {
   std::string arg2;
 };
 
+struct _con_arg {
+  std::string name;
+  CON_BITWIDTH length;
+
+  _con_arg(const std::string& _name, const CON_BITWIDTH& _length) : name(_name), length(_length) {}
+};
+
 
 struct con_section {
   std::string name;
@@ -59,7 +73,7 @@ struct con_if {
 
 struct con_function {
   std::string name;
-  std::vector<std::string> arguments;
+  std::vector<_con_arg> arguments;
 };
 
 struct con_cmd {

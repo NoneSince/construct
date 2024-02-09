@@ -1,7 +1,7 @@
 extern printf
 
 section .text
-function strlwr(str):
+function strlwr(str: dq):
 	!A_letter 65
 	!Z_letter 90
 	!end_of_str 0
